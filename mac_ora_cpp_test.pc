@@ -1,0 +1,84 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdio.h>
+/* For Pro*C */
+#include <sqlda.h>
+#include <sqlcpr.h>
+EXEC SQL INCLUDE SQLCA.H;
+
+// Now our C++ headers
+#include <vector>
+#include <iostream>
+#include <string>
+#include <algorithm>
+using std::for_each;
+using std::vector;
+using std::string;
+using std::cout;
+using std::endl;
+
+int main(void)
+{
+ 	EXEC SQL BEGIN DECLARE SECTION;
+		VARCHAR empName[255] = {0};
+		char userName[255] = {0};
+		char password[255] = {0};
+		char database[255] = {0};
+    EXEC SQL END DECLARE SECTION;
+    
+    // The list we're going to populate in the cursor loop
+    vector<string> empList;
+	
+    EXEC SQL WHENEVER SQLERROR GOTO oracle_error;
+    
+    sprintf(userName, "%s", "scott");
+    sprintf(password, "%s", "tiger");
+    sprintf(database, "%s", "orcl"); /* HEY! Change this to your database's sid or service name */
+    
+    cout << "Gonna try to connect..." << endl;
+    /* Now let's connect */
+	EXEC SQL CONNECT :userName IDENTIFIED BY :password USING :database;
+	
+	EXEC SQL DECLARE cur_employee CURSOR FOR 
+        select ename from emp;
+
+	cout << "Gonna open the cursor..." << endl;
+
+	EXEC SQL OPEN cur_employee;
+	for (;;)
+	{
+		EXEC SQL FETCH cur_employee into :empName;
+		if(sqlca.sqlcode !=0)  
+        {
+        	break;
+        }
+        
+        // Set the null-terminator on the array then cast it
+        // to something a std::string likes, then add it to
+        // our vector
+        empName.arr[empName.len] = 0;
+        string emp(reinterpret_cast<char*>(empName.arr));
+        empList.push_back(emp);
+	}
+
+	cout << "Now gonna close the cursor." << endl;
+	EXEC SQL CLOSE cur_employee;
+
+	EXEC SQL ROLLBACK WORK;
+
+    cout << "Now going to show the employee list in a lambda:\n" << endl;
+    for_each(empList.begin(), empList.end(), [] (std::vector<string>::value_type& emp) 
+    {
+        cout << emp << endl;
+    });
+
+    cout << "\n\nAll done" << endl;
+    return 0;
+    
+oracle_error:
+	printf("Oracle problem %.70s (%d)\n", sqlca.sqlerrm.sqlerrmc, -sqlca.sqlcode);
+	return 1;
+}
+
